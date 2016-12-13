@@ -23,7 +23,8 @@ if ( !class_exists( 'WPAnyIpsumAPI' ) ) {
 			$endpoint = sanitize_key( apply_filters( 'anyipsum-setting-get', 'api', 'anyipsum-settings-api', 'api-endpoint' ) );
 			if ( $enabled && ! empty( $endpoint ) ) {
 				add_rewrite_tag( '%any-ipsum-api-request%', '1' );
-				add_rewrite_rule( $endpoint . '?', 'index.php?any-ipsum-api-request=1', 'top' );
+				add_rewrite_rule( '^' . $endpoint . '/sms/twilio/?$', 'index.php?any-ipsum-twilio-request=1', 'top' );
+				add_rewrite_rule( '^' . $endpoint . '/?', 'index.php?any-ipsum-api-request=1', 'top' );
 			}
 		}
 
@@ -32,9 +33,50 @@ if ( !class_exists( 'WPAnyIpsumAPI' ) ) {
 			global $wp_query;
 			if ( $wp_query->get( 'any-ipsum-api-request' ) === '1' ) {
 				$this->handle_api_request();
+			} else if ( $wp_query->get( 'any-ipsum-twilio-request' ) === '1' ) {
+				$this->handle_twilio_request();
 			}
 		}
 
+		function handle_twilio_request() {
+
+			header( 'Access-Control-Allow-Origin: *' );
+			header( 'Content-Type: text/xml' );
+
+			$args = array(
+				'number-of-sentences' => 3,
+				'number-of-paragraphs' => 1,
+				'max-number-of-paragraphs' => 1,
+				'start-with-lorem' => 1,
+				'type' => 'meat-and-filler',
+				'source' => 'sms',
+				'format' => 'text',
+			);
+
+			// Call the Any Ipsum plugin to generate filler.
+			$filler = apply_filters( 'anyipsum-generate-filler', $args );
+
+			$body = trim( strtolower( $request['Body'] ) );
+
+			$response = '';
+
+			if ( 'bacon ipsum' === $body ) {
+				$response = reset( $filler );
+				$args['output'] = $response;
+			} else {
+				$response = __( "Try 'bacon ipsum', it's delicious.", 'bacon-ipsum' );
+				$args['error'] = $body;
+			}
+
+			$xml = '<?xml version="1.0" encoding="UTF-8"?><Response><Message>' . esc_html( $result->data ) . '</Message></Response>';
+
+			echo $xml;
+
+			// send notification for anything else that's hooked in.
+			do_action( 'anyipsum-filler-generated', $args );
+
+			exit;
+		}
 
 	    function handle_api_request() {
 
